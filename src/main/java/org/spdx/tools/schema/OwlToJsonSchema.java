@@ -53,6 +53,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  */
 public class OwlToJsonSchema extends AbstractOwlRdfConverter {
 
+    private static final String PROP_SPDXREF = "SPDXREF";   //TODO - move this constant to SpdxConstant class
     // JSON Schema string constants
     private static final String JSON_TYPE_STRING = "string";
     private static final String JSON_TYPE_BOOLEAN = "boolean";
@@ -67,6 +68,7 @@ public class OwlToJsonSchema extends AbstractOwlRdfConverter {
     
     private static final String SCHEMA_VERSION_URI = "http://json-schema.org/draft-07/schema#";
 	private static final String RELATIONSHIP_TYPE = SpdxConstants.SPDX_NAMESPACE + SpdxConstants.CLASS_RELATIONSHIP;
+	private static final String ANNOTATION_TYPE = SpdxConstants.SPDX_NAMESPACE + SpdxConstants.CLASS_ANNOTATION;
 	static ObjectMapper jsonMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 	private static final Set<String> USES_SPDXIDS;
     
@@ -121,9 +123,14 @@ public class OwlToJsonSchema extends AbstractOwlRdfConverter {
 		OntClass snippetClass = model.getOntClass(SpdxConstants.SPDX_NAMESPACE + SpdxConstants.CLASS_SPDX_SNIPPET);
 		Objects.requireNonNull(snippetClass, "Missing SPDX Snippet class in OWL document");
 		properties.set("snippets", toArrayPropertySchema(snippetClass, 0));
-		OntClass relationshipClass = model.getOntClass(SpdxConstants.SPDX_NAMESPACE + SpdxConstants.CLASS_RELATIONSHIP);
+		// Add in the relationship class to the top level
+		OntClass relationshipClass = model.getOntClass(RELATIONSHIP_TYPE);
 		Objects.requireNonNull(relationshipClass, "Missing SPDX Relationship class in OWL document");
 		properties.set("relationships", toArrayPropertySchema(relationshipClass, 0));
+		// Add in the annotation class to the top level
+        OntClass annotationClass = model.getOntClass(ANNOTATION_TYPE);
+        Objects.requireNonNull(annotationClass, "Missing SPDX Annotation class in OWL document");
+        properties.set("annotations", toArrayPropertySchema(annotationClass, 0));
 		root.set("properties", properties);
 		root.set("required", required);
 		return root;
@@ -171,6 +178,12 @@ public class OwlToJsonSchema extends AbstractOwlRdfConverter {
             properties.set(SpdxConstants.PROP_SPDX_ELEMENTID, createSimpleTypeSchema(JSON_TYPE_STRING, 
                     "Id to which the SPDX element is related"));
             required.add(SpdxConstants.PROP_SPDX_ELEMENTID);
+        }
+        if (ontClass.getLocalName().equals(SpdxConstants.CLASS_ANNOTATION)) {
+            // Need to add in the SPDX ID
+            properties.set(PROP_SPDXREF, createSimpleTypeSchema(JSON_TYPE_STRING, 
+                    "Id for the SPDX element which has the annotation"));
+            required.add(PROP_SPDXREF);
         }
         addClassProperties(ontClass, properties, required);
         if (properties.size() > 0) {
@@ -220,7 +233,9 @@ public class OwlToJsonSchema extends AbstractOwlRdfConverter {
 			}
 			PropertyRestrictions restrictions = getPropertyRestrictions(spdxClass, property);
 			Objects.requireNonNull(restrictions.getTypeUri(), "Missing type for property "+property.getLocalName());
-			if (restrictions.getTypeUri().equals(RELATIONSHIP_TYPE)) {
+			if (restrictions.getTypeUri().equals(RELATIONSHIP_TYPE) ||
+			        restrictions.getTypeUri().equals(ANNOTATION_TYPE)) {
+			    // These are included in the outside document are are not properties of the element for the JSON serialization
 				continue;
 			}
 			if (restrictions.isListProperty()) {
